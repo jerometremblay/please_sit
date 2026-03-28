@@ -1,0 +1,344 @@
+package com.jerome.pleasesit.block.entity;
+
+import com.jerome.pleasesit.registry.ModBlockEntities;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
+import net.minecraft.world.entity.decoration.ArmorStand;
+import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.phys.AABB;
+
+public class ModdingChairBlockEntity extends BlockEntity {
+    private static final String TARGET_POS_KEY = "target_pos";
+    private static final double SEARCH_RADIUS = 8.0D;
+    private static final double APPROACH_SPEED = 0.6D;
+    private static final double MOUNT_DISTANCE_SQR = 0.75D;
+    private static final double STALLED_NEAR_DESTINATION_DISTANCE_SQR = 2.5D * 2.5D;
+    private static final double MIN_MOVEMENT_DISTANCE_SQR = 0.02D * 0.02D;
+    private static final double SEAT_X_OFFSET = 0.5D;
+    private static final double SEAT_Y_OFFSET = -1.85D;
+    private static final double SEAT_Z_OFFSET = 0.5D;
+    private static final Map<ResourceKey<Level>, Map<UUID, BlockPos>> CLAIMED_VILLAGERS = new HashMap<>();
+
+    private UUID seatEntityUuid;
+    private UUID villagerUuid;
+    private BlockPos targetPos;
+    private double lastVillagerX;
+    private double lastVillagerY;
+    private double lastVillagerZ;
+    private boolean hasLastVillagerPosition;
+
+    public ModdingChairBlockEntity(BlockPos pos, BlockState blockState) {
+        super(ModBlockEntities.MODDING_CHAIR.get(), pos, blockState);
+    }
+
+    public void activate(ServerLevel level) {
+        if (villagerUuid != null) {
+            return;
+        }
+
+        Optional<Villager> villager = findNearestVillager(level);
+        if (villager.isEmpty()) {
+            return;
+        }
+
+        Villager selectedVillager = villager.get();
+        enableDoorNavigation(selectedVillager);
+        claimVillager(level, selectedVillager.getUUID());
+        villagerUuid = selectedVillager.getUUID();
+        selectedVillager.getNavigation().moveTo(getApproachX(), getApproachY(), getApproachZ(), APPROACH_SPEED);
+        rememberVillagerPosition(selectedVillager);
+        setChanged();
+    }
+
+    public void releaseOccupant() {
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        Entity seat = getSeatEntity(serverLevel);
+        Entity villager = getVillagerEntity(serverLevel);
+        boolean wasSeated = seat != null && villager != null && villager.isPassengerOfSameVehicle(seat);
+        if (seat != null) {
+            seat.ejectPassengers();
+            seat.discard();
+        }
+
+        if (villager instanceof Villager villagerEntity) {
+            villagerEntity.getNavigation().stop();
+            villagerEntity.setInvulnerable(false);
+            if (wasSeated) {
+                placeVillagerOnFloor(villagerEntity);
+            }
+        }
+
+        releaseVillagerClaim(serverLevel);
+        seatEntityUuid = null;
+        villagerUuid = null;
+        hasLastVillagerPosition = false;
+        setChanged();
+    }
+
+    public static void tick(Level level, BlockPos pos, BlockState state, ModdingChairBlockEntity chair) {
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        if (chair.villagerUuid == null) {
+            return;
+        }
+
+        chair.refreshVillagerClaim(serverLevel);
+        Entity villager = chair.getVillagerEntity(serverLevel);
+        if (!(villager instanceof Villager villagerEntity) || !villagerEntity.isAlive()) {
+            chair.releaseOccupant();
+            return;
+        }
+
+        Entity seat = chair.getSeatEntity(serverLevel);
+        if (seat == null) {
+            villagerEntity.getNavigation().moveTo(chair.getApproachX(), chair.getApproachY(), chair.getApproachZ(), APPROACH_SPEED);
+            double distanceToApproach = villagerEntity.distanceToSqr(chair.getApproachX(), chair.getApproachY(), chair.getApproachZ());
+            if (distanceToApproach <= MOUNT_DISTANCE_SQR
+                    || chair.isStalledNearApproach(villagerEntity, distanceToApproach)) {
+                chair.mountVillager(serverLevel, villagerEntity);
+                return;
+            }
+
+            chair.rememberVillagerPosition(villagerEntity);
+            return;
+        }
+
+        if (!villagerEntity.isPassengerOfSameVehicle(seat)) {
+            chair.releaseOccupant();
+        }
+    }
+
+    @Override
+    public void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
+        super.loadAdditional(tag, registries);
+        seatEntityUuid = tag.hasUUID("seat_entity_uuid") ? tag.getUUID("seat_entity_uuid") : null;
+        villagerUuid = tag.hasUUID("villager_uuid") ? tag.getUUID("villager_uuid") : null;
+        targetPos = tag.contains(TARGET_POS_KEY) ? BlockPos.of(tag.getLong(TARGET_POS_KEY)) : null;
+    }
+
+    @Override
+    public void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
+        super.saveAdditional(tag, registries);
+        if (seatEntityUuid != null) {
+            tag.putUUID("seat_entity_uuid", seatEntityUuid);
+        }
+        if (villagerUuid != null) {
+            tag.putUUID("villager_uuid", villagerUuid);
+        }
+        if (targetPos != null) {
+            tag.putLong(TARGET_POS_KEY, targetPos.asLong());
+        }
+    }
+
+    private Optional<Villager> findNearestVillager(ServerLevel level) {
+        AABB searchBox = new AABB(getTargetPos()).inflate(SEARCH_RADIUS);
+        return level.getEntitiesOfClass(Villager.class, searchBox).stream()
+                .filter(Entity::isAlive)
+                .filter(villager -> !villager.isPassenger())
+                .filter(villager -> !isVillagerClaimedByAnotherChair(level, villager.getUUID()))
+                .min(Comparator.comparingDouble(villager -> villager.distanceToSqr(getSeatX(), getSeatY(), getSeatZ())));
+    }
+
+    private ArmorStand createSeat(ServerLevel level) {
+        ArmorStand seat = new ArmorStand(
+                level,
+                getSeatX(),
+                getSeatY(),
+                getSeatZ()
+        );
+        seat.setNoGravity(true);
+        seat.setInvisible(true);
+        seat.setInvulnerable(true);
+        seat.setSilent(true);
+        seat.setNoBasePlate(true);
+        level.addFreshEntity(seat);
+        return seat;
+    }
+
+    private void mountVillager(ServerLevel level, Villager villager) {
+        ArmorStand seat = createSeat(level);
+        villager.getNavigation().stop();
+        villager.setInvulnerable(true);
+        villager.setPos(getSeatX(), getSeatY(), getSeatZ());
+        if (!villager.startRiding(seat, true)) {
+            villager.setInvulnerable(false);
+            seat.discard();
+            releaseVillagerClaim(level);
+            villagerUuid = null;
+            seatEntityUuid = null;
+            setChanged();
+            return;
+        }
+
+        seatEntityUuid = seat.getUUID();
+        setChanged();
+    }
+
+    private Entity getSeatEntity(ServerLevel level) {
+        return seatEntityUuid == null ? null : level.getEntity(seatEntityUuid);
+    }
+
+    private Entity getVillagerEntity(ServerLevel level) {
+        return villagerUuid == null ? null : level.getEntity(villagerUuid);
+    }
+
+    private BlockPos getTargetPos() {
+        return targetPos != null ? targetPos : worldPosition;
+    }
+
+    private void refreshVillagerClaim(ServerLevel level) {
+        if (villagerUuid == null) {
+            return;
+        }
+
+        claimVillager(level, villagerUuid);
+    }
+
+    private void claimVillager(ServerLevel level, UUID uuid) {
+        CLAIMED_VILLAGERS
+                .computeIfAbsent(level.dimension(), ignored -> new HashMap<>())
+                .put(uuid, worldPosition);
+    }
+
+    private void releaseVillagerClaim(ServerLevel level) {
+        if (villagerUuid == null) {
+            return;
+        }
+
+        Map<UUID, BlockPos> claims = CLAIMED_VILLAGERS.get(level.dimension());
+        if (claims == null) {
+            return;
+        }
+
+        BlockPos claimedBy = claims.get(villagerUuid);
+        if (worldPosition.equals(claimedBy)) {
+            claims.remove(villagerUuid);
+        }
+
+        if (claims.isEmpty()) {
+            CLAIMED_VILLAGERS.remove(level.dimension());
+        }
+    }
+
+    private boolean isVillagerClaimedByAnotherChair(ServerLevel level, UUID uuid) {
+        Map<UUID, BlockPos> claims = CLAIMED_VILLAGERS.get(level.dimension());
+        if (claims == null) {
+            return false;
+        }
+
+        BlockPos claimedBy = claims.get(uuid);
+        return claimedBy != null && !worldPosition.equals(claimedBy);
+    }
+
+    private boolean isStalledNearApproach(Villager villager, double distanceToApproach) {
+        if (!hasLastVillagerPosition || distanceToApproach > STALLED_NEAR_DESTINATION_DISTANCE_SQR) {
+            return false;
+        }
+
+        double movementDistance = villager.distanceToSqr(lastVillagerX, lastVillagerY, lastVillagerZ);
+        return movementDistance <= MIN_MOVEMENT_DISTANCE_SQR;
+    }
+
+    private void rememberVillagerPosition(Villager villager) {
+        lastVillagerX = villager.getX();
+        lastVillagerY = villager.getY();
+        lastVillagerZ = villager.getZ();
+        hasLastVillagerPosition = true;
+    }
+
+    private void placeVillagerOnFloor(Villager villager) {
+        BlockPos floorPos = getReleasePos();
+        villager.setPos(floorPos.getX() + 0.5D, floorPos.getY() + 1.0D, floorPos.getZ() + 0.5D);
+    }
+
+    private double getSeatX() {
+        return getTargetPos().getX() + SEAT_X_OFFSET;
+    }
+
+    private double getApproachX() {
+        return getApproachPos().getX() + 0.5D;
+    }
+
+    private double getApproachY() {
+        return getApproachPos().getY();
+    }
+
+    private double getApproachZ() {
+        return getApproachPos().getZ() + 0.5D;
+    }
+
+    private double getSeatY() {
+        return getTargetPos().getY() + SEAT_Y_OFFSET;
+    }
+
+    private double getSeatZ() {
+        return getTargetPos().getZ() + SEAT_Z_OFFSET;
+    }
+
+    private BlockPos getApproachPos() {
+        BlockPos targetPos = getTargetPos();
+        int dx = worldPosition.getX() - targetPos.getX();
+        int dz = worldPosition.getZ() - targetPos.getZ();
+
+        if (Math.abs(dx) >= Math.abs(dz) && dx != 0) {
+            return targetPos.relative(dx > 0 ? Direction.EAST : Direction.WEST);
+        }
+
+        if (dz != 0) {
+            return targetPos.relative(dz > 0 ? Direction.SOUTH : Direction.NORTH);
+        }
+
+        return targetPos.relative(Direction.SOUTH);
+    }
+
+    private BlockPos getReleasePos() {
+        Direction[] directions = {Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST};
+        for (Direction direction : directions) {
+            BlockPos candidate = getTargetPos().relative(direction);
+            if (isClearStandingSpot(candidate)) {
+                return candidate;
+            }
+        }
+
+        return getApproachPos();
+    }
+
+    private boolean isClearStandingSpot(BlockPos pos) {
+        if (level == null) {
+            return false;
+        }
+
+        BlockState feet = level.getBlockState(pos);
+        BlockState head = level.getBlockState(pos.above());
+        BlockState floor = level.getBlockState(pos.below());
+        return feet.getCollisionShape(level, pos).isEmpty()
+                && head.getCollisionShape(level, pos.above()).isEmpty()
+                && floor.isFaceSturdy(level, pos.below(), Direction.UP);
+    }
+
+    private void enableDoorNavigation(Villager villager) {
+        if (villager.getNavigation() instanceof GroundPathNavigation navigation) {
+            navigation.setCanOpenDoors(true);
+        }
+    }
+}

@@ -1,0 +1,34 @@
+{
+  "variants": {
+    "facing=north,powered=false": {
+      "model": "pleasesit:block/modding_chair"
+    },
+    "facing=east,powered=false": {
+      "model": "pleasesit:block/modding_chair",
+      "y": 90
+    },
+    "facing=south,powered=false": {
+      "model": "pleasesit:block/modding_chair",
+      "y": 180
+    },
+    "facing=west,powered=false": {
+      "model": "pleasesit:block/modding_chair",
+      "y": 270
+    },
+    "facing=north,powered=true": {
+      "model": "pleasesit:block/modding_chair_powered"
+    },
+    "facing=east,powered=true": {
+      "model": "pleasesit:block/modding_chair_powered",
+      "y": 90
+    },
+    "facing=south,powered=true": {
+      "model": "pleasesit:block/modding_chair_powered",
+      "y": 180
+    },
+    "facing=west,powered=true": {
+      "model": "pleasesit:block/modding_chair_powered",
+      "y": 270
+    }
+  }
+}
