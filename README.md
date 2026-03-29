@@ -6,14 +6,37 @@
 
 ## Demo
 
-- [Watch the demo video](https://youtu.be/vfZtde4tGP4)
+- [Watch the demo video](hhttps://youtu.be/tpMgrF_vI0c)
 
 ## How It Works
 
 - Use the Please Sit Controller item on a target block to store the seat location.
+- Optionally, sneak-right-click a villager with the item to lock that villager to the controller item.
 - Place the control block where you want the wiring.
 - Power the block to call a villager to the target seat.
+- If the controller was locked to a villager, only that villager will respond. Otherwise, the controller will pick an eligible nearby villager.
 - Remove power to release the villager to a nearby clear block.
+
+## Settings
+
+- The mod uses NeoForge's built-in config screen.
+- Open the Mods list, select `Please Sit`, and press `Config` to adjust settings.
+- `Villager Search Radius` controls how far from the target seat the controller searches for a villager.
+
+## Recipe
+
+```text
+R C R
+W S W
+P I P
+```
+
+- `R` = Redstone Dust
+- `C` = Comparator
+- `W` = Any wooden slab
+- `S` = Stick
+- `P` = Any planks
+- `I` = Iron Ingot
 
 ## Requirements
 

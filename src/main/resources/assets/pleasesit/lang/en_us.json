@@ -3,6 +3,10 @@
   "block.pleasesit.modding_chair": "Please Sit Controller",
   "item.pleasesit.modding_chair.target_missing": "Right-click a block to select the controller target",
   "item.pleasesit.modding_chair.target_ready": "Target: %s",
-  "item.pleasesit.modding_chair.target_reset_hint": "Sneak-right-click a block to change the target",
-  "item.pleasesit.modding_chair.target_set": "Please Sit Controller target set"
+  "item.pleasesit.modding_chair.target_reset_hint": "Sneak-right-click a block to change the target, or a villager to lock it",
+  "item.pleasesit.modding_chair.target_set": "Please Sit Controller target set",
+  "item.pleasesit.modding_chair.villager_locked": "Please Sit Controller locked to this villager",
+  "item.pleasesit.modding_chair.villager_locked_tooltip": "Locked to a specific villager",
+  "pleasesit.config.category.controller": "Controller",
+  "pleasesit.config.villagerSearchRadius": "Villager Search Radius"
 }

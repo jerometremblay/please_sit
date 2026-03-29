@@ -18,10 +18,13 @@ First in-game check:
 1. Create a Creative world.
 2. Search for `Please Sit Controller` in the inventory.
 3. Right-click a target block with the Please Sit Controller item to store the seat.
-4. Place the Please Sit Controller near a villager.
-5. Power it with a lever or redstone torch.
-6. The villager should walk to the assigned seat and stay seated while powered.
-7. Remove power and the villager should be released beside the seat.
+4. Optionally, sneak-right-click a villager with the item to lock that villager to the controller.
+5. Place the Please Sit Controller near villagers.
+6. Power it with a lever or redstone torch.
+7. Without a villager lock, an eligible nearby villager should walk to the assigned seat and stay seated while powered.
+8. If the controller was locked to a villager, only that villager should respond and other villagers should ignore that controller.
+9. Remove power and the villager should be released beside the seat.
+10. Open the Mods list, select `Please Sit`, press `Config`, and confirm `Villager Search Radius` can be changed in the NeoForge config screen.
 
 Useful paths:
 

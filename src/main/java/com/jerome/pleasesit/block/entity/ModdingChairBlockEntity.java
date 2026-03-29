@@ -1,11 +1,14 @@
 package com.jerome.pleasesit.block.entity;
 
+import com.jerome.pleasesit.block.ModdingChairBlock;
+import com.jerome.pleasesit.config.PleaseSitConfig;
 import com.jerome.pleasesit.registry.ModBlockEntities;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
@@ -24,7 +27,7 @@ import net.minecraft.world.phys.AABB;
 
 public class ModdingChairBlockEntity extends BlockEntity {
     private static final String TARGET_POS_KEY = "target_pos";
-    private static final double SEARCH_RADIUS = 8.0D;
+    private static final String LOCKED_VILLAGER_UUID_KEY = "locked_villager_uuid";
     private static final double APPROACH_SPEED = 0.6D;
     private static final double MOUNT_DISTANCE_SQR = 0.75D;
     private static final double STALLED_NEAR_DESTINATION_DISTANCE_SQR = 2.5D * 2.5D;
@@ -33,9 +36,11 @@ public class ModdingChairBlockEntity extends BlockEntity {
     private static final double SEAT_Y_OFFSET = -1.85D;
     private static final double SEAT_Z_OFFSET = 0.5D;
     private static final Map<ResourceKey<Level>, Map<UUID, BlockPos>> CLAIMED_VILLAGERS = new HashMap<>();
+    private static final Map<ResourceKey<Level>, Map<UUID, BlockPos>> LOCKED_VILLAGERS = new HashMap<>();
 
     private UUID seatEntityUuid;
     private UUID villagerUuid;
+    private UUID lockedVillagerUuid;
     private BlockPos targetPos;
     private double lastVillagerX;
     private double lastVillagerY;
@@ -47,6 +52,7 @@ public class ModdingChairBlockEntity extends BlockEntity {
     }
 
     public void activate(ServerLevel level) {
+        refreshPersistentLock(level);
         if (villagerUuid != null) {
             return;
         }
@@ -62,6 +68,22 @@ public class ModdingChairBlockEntity extends BlockEntity {
         villagerUuid = selectedVillager.getUUID();
         selectedVillager.getNavigation().moveTo(getApproachX(), getApproachY(), getApproachZ(), APPROACH_SPEED);
         rememberVillagerPosition(selectedVillager);
+        setChanged();
+    }
+
+    public void applyPlacementData(@Nullable BlockPos targetPos, @Nullable UUID lockedVillagerUuid) {
+        this.targetPos = targetPos;
+
+        if (level instanceof ServerLevel serverLevel && this.lockedVillagerUuid != null && !this.lockedVillagerUuid.equals(lockedVillagerUuid)) {
+            unregisterPersistentLock(serverLevel);
+        }
+
+        this.lockedVillagerUuid = lockedVillagerUuid;
+
+        if (level instanceof ServerLevel serverLevel) {
+            refreshPersistentLock(serverLevel);
+        }
+
         setChanged();
     }
 
@@ -98,6 +120,7 @@ public class ModdingChairBlockEntity extends BlockEntity {
             return;
         }
 
+        chair.refreshPersistentLock(serverLevel);
         if (chair.villagerUuid == null) {
             return;
         }
@@ -133,7 +156,25 @@ public class ModdingChairBlockEntity extends BlockEntity {
         super.loadAdditional(tag, registries);
         seatEntityUuid = tag.hasUUID("seat_entity_uuid") ? tag.getUUID("seat_entity_uuid") : null;
         villagerUuid = tag.hasUUID("villager_uuid") ? tag.getUUID("villager_uuid") : null;
+        lockedVillagerUuid = tag.hasUUID(LOCKED_VILLAGER_UUID_KEY) ? tag.getUUID(LOCKED_VILLAGER_UUID_KEY) : null;
         targetPos = tag.contains(TARGET_POS_KEY) ? BlockPos.of(tag.getLong(TARGET_POS_KEY)) : null;
+    }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (level instanceof ServerLevel serverLevel) {
+            refreshPersistentLock(serverLevel);
+        }
+    }
+
+    @Override
+    public void setRemoved() {
+        if (level instanceof ServerLevel serverLevel) {
+            unregisterPersistentLock(serverLevel);
+            releaseVillagerClaim(serverLevel);
+        }
+        super.setRemoved();
     }
 
     @Override
@@ -145,16 +186,33 @@ public class ModdingChairBlockEntity extends BlockEntity {
         if (villagerUuid != null) {
             tag.putUUID("villager_uuid", villagerUuid);
         }
+        if (lockedVillagerUuid != null) {
+            tag.putUUID(LOCKED_VILLAGER_UUID_KEY, lockedVillagerUuid);
+        }
         if (targetPos != null) {
             tag.putLong(TARGET_POS_KEY, targetPos.asLong());
         }
     }
 
     private Optional<Villager> findNearestVillager(ServerLevel level) {
-        AABB searchBox = new AABB(getTargetPos()).inflate(SEARCH_RADIUS);
+        if (lockedVillagerUuid != null) {
+            Entity entity = level.getEntity(lockedVillagerUuid);
+            if (!(entity instanceof Villager villager)
+                    || !villager.isAlive()
+                    || villager.isPassenger()
+                    || isVillagerLockedByAnotherChair(level, villager.getUUID())
+                    || isVillagerClaimedByAnotherChair(level, villager.getUUID())) {
+                return Optional.empty();
+            }
+
+            return Optional.of(villager);
+        }
+
+        AABB searchBox = new AABB(getTargetPos()).inflate(getSearchRadius());
         return level.getEntitiesOfClass(Villager.class, searchBox).stream()
                 .filter(Entity::isAlive)
                 .filter(villager -> !villager.isPassenger())
+                .filter(villager -> !isVillagerLockedByAnotherChair(level, villager.getUUID()))
                 .filter(villager -> !isVillagerClaimedByAnotherChair(level, villager.getUUID()))
                 .min(Comparator.comparingDouble(villager -> villager.distanceToSqr(getSeatX(), getSeatY(), getSeatZ())));
     }
@@ -166,20 +224,28 @@ public class ModdingChairBlockEntity extends BlockEntity {
                 getSeatY(),
                 getSeatZ()
         );
+        float seatYaw = getSeatYaw();
         seat.setNoGravity(true);
         seat.setInvisible(true);
         seat.setInvulnerable(true);
         seat.setSilent(true);
         seat.setNoBasePlate(true);
+        seat.setYRot(seatYaw);
+        seat.setYHeadRot(seatYaw);
+        seat.setYBodyRot(seatYaw);
         level.addFreshEntity(seat);
         return seat;
     }
 
     private void mountVillager(ServerLevel level, Villager villager) {
         ArmorStand seat = createSeat(level);
+        float seatYaw = getSeatYaw();
         villager.getNavigation().stop();
         villager.setInvulnerable(true);
         villager.setPos(getSeatX(), getSeatY(), getSeatZ());
+        villager.setYRot(seatYaw);
+        villager.setYBodyRot(seatYaw);
+        villager.setYHeadRot(seatYaw);
         if (!villager.startRiding(seat, true)) {
             villager.setInvulnerable(false);
             seat.discard();
@@ -220,6 +286,16 @@ public class ModdingChairBlockEntity extends BlockEntity {
                 .put(uuid, worldPosition);
     }
 
+    private void refreshPersistentLock(ServerLevel level) {
+        if (lockedVillagerUuid == null) {
+            return;
+        }
+
+        LOCKED_VILLAGERS
+                .computeIfAbsent(level.dimension(), ignored -> new HashMap<>())
+                .put(lockedVillagerUuid, worldPosition);
+    }
+
     private void releaseVillagerClaim(ServerLevel level) {
         if (villagerUuid == null) {
             return;
@@ -240,6 +316,26 @@ public class ModdingChairBlockEntity extends BlockEntity {
         }
     }
 
+    private void unregisterPersistentLock(ServerLevel level) {
+        if (lockedVillagerUuid == null) {
+            return;
+        }
+
+        Map<UUID, BlockPos> locks = LOCKED_VILLAGERS.get(level.dimension());
+        if (locks == null) {
+            return;
+        }
+
+        BlockPos lockedBy = locks.get(lockedVillagerUuid);
+        if (worldPosition.equals(lockedBy)) {
+            locks.remove(lockedVillagerUuid);
+        }
+
+        if (locks.isEmpty()) {
+            LOCKED_VILLAGERS.remove(level.dimension());
+        }
+    }
+
     private boolean isVillagerClaimedByAnotherChair(ServerLevel level, UUID uuid) {
         Map<UUID, BlockPos> claims = CLAIMED_VILLAGERS.get(level.dimension());
         if (claims == null) {
@@ -248,6 +344,16 @@ public class ModdingChairBlockEntity extends BlockEntity {
 
         BlockPos claimedBy = claims.get(uuid);
         return claimedBy != null && !worldPosition.equals(claimedBy);
+    }
+
+    private boolean isVillagerLockedByAnotherChair(ServerLevel level, UUID uuid) {
+        Map<UUID, BlockPos> locks = LOCKED_VILLAGERS.get(level.dimension());
+        if (locks == null) {
+            return false;
+        }
+
+        BlockPos lockedBy = locks.get(uuid);
+        return lockedBy != null && !worldPosition.equals(lockedBy);
     }
 
     private boolean isStalledNearApproach(Villager villager, double distanceToApproach) {
@@ -293,6 +399,14 @@ public class ModdingChairBlockEntity extends BlockEntity {
 
     private double getSeatZ() {
         return getTargetPos().getZ() + SEAT_Z_OFFSET;
+    }
+
+    private float getSeatYaw() {
+        return getBlockState().getValue(ModdingChairBlock.FACING).toYRot();
+    }
+
+    private double getSearchRadius() {
+        return PleaseSitConfig.COMMON.villagerSearchRadius.get();
     }
 
     private BlockPos getApproachPos() {

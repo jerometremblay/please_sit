@@ -1,0 +1,32 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_comparator": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "minecraft:comparator"
+          }
+        ]
+      }
+    },
+    "has_the_recipe": {
+      "trigger": "minecraft:recipe_unlocked",
+      "conditions": {
+        "recipe": "pleasesit:modding_chair"
+      }
+    }
+  },
+  "requirements": [
+    [
+      "has_the_recipe",
+      "has_comparator"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "pleasesit:modding_chair"
+    ]
+  }
+}
