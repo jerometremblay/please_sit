@@ -6,7 +6,8 @@
 
 ## Demo
 
-- [Watch the demo video](hhttps://youtu.be/tpMgrF_vI0c)
+
+- [Watch the demo video](https://www.youtube.com/watch?v=tpMgrF_vI0c)
 
 ## How It Works
 
