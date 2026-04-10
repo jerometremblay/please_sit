@@ -1,6 +1,6 @@
 # Please Sit
 
-`Please Sit` is a NeoForge 1.21.1 mod that adds a redstone-controlled villager controller. You select a target seat block first, place the control block, and then use redstone to call and release villagers.
+`Please Sit` is a NeoForge mod for Minecraft 1.21.x that adds a redstone-controlled villager controller. You select a target seat block first, place the control block, and then use redstone to call and release villagers.
 
 ![CurseForge thumbnail](docs/media/curseforge-thumbnail.png)
 
@@ -40,8 +40,8 @@ P I P
 
 ## Requirements
 
-- Minecraft `1.21.1`
-- NeoForge `21.1.221`
+- Minecraft `1.21.x` (developed against `1.21.1`)
+- NeoForge `21.1.x` (developed against `21.1.221`)
 
 ## Development
 
