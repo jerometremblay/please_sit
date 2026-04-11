@@ -8,22 +8,24 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.HolderLookup;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
 import net.minecraft.world.entity.decoration.ArmorStand;
-import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
+import org.jspecify.annotations.Nullable;
 
 public class ModdingChairBlockEntity extends BlockEntity {
     private static final String TARGET_POS_KEY = "target_pos";
@@ -152,12 +154,12 @@ public class ModdingChairBlockEntity extends BlockEntity {
     }
 
     @Override
-    public void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
-        super.loadAdditional(tag, registries);
-        seatEntityUuid = tag.hasUUID("seat_entity_uuid") ? tag.getUUID("seat_entity_uuid") : null;
-        villagerUuid = tag.hasUUID("villager_uuid") ? tag.getUUID("villager_uuid") : null;
-        lockedVillagerUuid = tag.hasUUID(LOCKED_VILLAGER_UUID_KEY) ? tag.getUUID(LOCKED_VILLAGER_UUID_KEY) : null;
-        targetPos = tag.contains(TARGET_POS_KEY) ? BlockPos.of(tag.getLong(TARGET_POS_KEY)) : null;
+    protected void loadAdditional(ValueInput input) {
+        super.loadAdditional(input);
+        seatEntityUuid = input.read("seat_entity_uuid", UUIDUtil.CODEC).orElse(null);
+        villagerUuid = input.read("villager_uuid", UUIDUtil.CODEC).orElse(null);
+        lockedVillagerUuid = input.read(LOCKED_VILLAGER_UUID_KEY, UUIDUtil.CODEC).orElse(null);
+        targetPos = input.getLong(TARGET_POS_KEY).map(BlockPos::of).orElse(null);
     }
 
     @Override
@@ -178,19 +180,19 @@ public class ModdingChairBlockEntity extends BlockEntity {
     }
 
     @Override
-    public void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
-        super.saveAdditional(tag, registries);
+    protected void saveAdditional(ValueOutput output) {
+        super.saveAdditional(output);
         if (seatEntityUuid != null) {
-            tag.putUUID("seat_entity_uuid", seatEntityUuid);
+            output.store("seat_entity_uuid", UUIDUtil.CODEC, seatEntityUuid);
         }
         if (villagerUuid != null) {
-            tag.putUUID("villager_uuid", villagerUuid);
+            output.store("villager_uuid", UUIDUtil.CODEC, villagerUuid);
         }
         if (lockedVillagerUuid != null) {
-            tag.putUUID(LOCKED_VILLAGER_UUID_KEY, lockedVillagerUuid);
+            output.store(LOCKED_VILLAGER_UUID_KEY, UUIDUtil.CODEC, lockedVillagerUuid);
         }
         if (targetPos != null) {
-            tag.putLong(TARGET_POS_KEY, targetPos.asLong());
+            output.putLong(TARGET_POS_KEY, targetPos.asLong());
         }
     }
 
@@ -246,7 +248,7 @@ public class ModdingChairBlockEntity extends BlockEntity {
         villager.setYRot(seatYaw);
         villager.setYBodyRot(seatYaw);
         villager.setYHeadRot(seatYaw);
-        if (!villager.startRiding(seat, true)) {
+        if (!villager.startRiding(seat, true, true)) {
             villager.setInvulnerable(false);
             seat.discard();
             releaseVillagerClaim(level);

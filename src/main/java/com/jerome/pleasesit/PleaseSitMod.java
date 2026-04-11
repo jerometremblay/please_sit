@@ -26,7 +26,7 @@ public final class PleaseSitMod {
         ModBlockEntities.register(modEventBus);
         modEventBus.addListener(this::addCreativeTabEntries);
         modContainer.registerConfig(ModConfig.Type.COMMON, PleaseSitConfig.COMMON_SPEC);
-        if (FMLEnvironment.dist.isClient()) {
+        if (FMLEnvironment.getDist().isClient()) {
             modContainer.registerExtensionPoint(IConfigScreenFactory.class, (container, parent) -> new ConfigurationScreen(modContainer, parent));
         }
         LOGGER.info("Loading {}", MOD_ID);
