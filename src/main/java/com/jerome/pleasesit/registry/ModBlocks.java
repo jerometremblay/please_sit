@@ -5,7 +5,6 @@ import com.jerome.pleasesit.block.ModdingChairBlock;
 import com.jerome.pleasesit.item.ModdingChairBlockItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
@@ -18,14 +17,15 @@ public final class ModBlocks {
     private static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(PleaseSitMod.MOD_ID);
     private static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(PleaseSitMod.MOD_ID);
 
-    public static final DeferredBlock<Block> MODDING_CHAIR = BLOCKS.register("modding_chair",
-            () -> new ModdingChairBlock(BlockBehaviour.Properties.of()
+    public static final DeferredBlock<ModdingChairBlock> MODDING_CHAIR = BLOCKS.registerBlock("modding_chair",
+            ModdingChairBlock::new,
+            BlockBehaviour.Properties.of()
                     .mapColor(MapColor.COLOR_BROWN)
                     .strength(2.0F)
-                    .sound(SoundType.WOOD)));
+                    .sound(SoundType.WOOD));
 
-    public static final DeferredItem<BlockItem> MODDING_CHAIR_ITEM = ITEMS.register("modding_chair",
-            () -> new ModdingChairBlockItem(ModBlocks.MODDING_CHAIR.get(), new Item.Properties()));
+    public static final DeferredItem<BlockItem> MODDING_CHAIR_ITEM = ITEMS.registerItem("modding_chair",
+            properties -> new ModdingChairBlockItem(ModBlocks.MODDING_CHAIR.get(), properties));
 
     private ModBlocks() {
     }

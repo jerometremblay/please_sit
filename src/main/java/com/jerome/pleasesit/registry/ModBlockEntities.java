@@ -2,6 +2,7 @@ package com.jerome.pleasesit.registry;
 
 import com.jerome.pleasesit.PleaseSitMod;
 import com.jerome.pleasesit.block.entity.ModdingChairBlockEntity;
+import java.util.Set;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.neoforged.bus.api.IEventBus;
@@ -14,7 +15,7 @@ public final class ModBlockEntities {
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ModdingChairBlockEntity>> MODDING_CHAIR =
             BLOCK_ENTITY_TYPES.register("modding_chair",
-                    () -> BlockEntityType.Builder.of(ModdingChairBlockEntity::new, ModBlocks.MODDING_CHAIR.get()).build(null));
+                    () -> new BlockEntityType<>(ModdingChairBlockEntity::new, Set.of(ModBlocks.MODDING_CHAIR.get())));
 
     private ModBlockEntities() {
     }

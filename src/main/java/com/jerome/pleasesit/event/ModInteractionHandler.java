@@ -6,7 +6,6 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
@@ -27,7 +26,7 @@ public final class ModInteractionHandler {
         }
 
         ModdingChairBlockItem.bindToVillager(stack, player, villager);
-        event.setCancellationResult(InteractionResult.sidedSuccess(player.level().isClientSide));
+        event.setCancellationResult(player.level().isClientSide() ? InteractionResult.SUCCESS : InteractionResult.SUCCESS_SERVER);
         event.setCanceled(true);
     }
 }

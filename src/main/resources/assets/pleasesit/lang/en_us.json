@@ -1,6 +1,7 @@
 {
   "pleasesit.mod_name": "Please Sit",
   "block.pleasesit.modding_chair": "Please Sit Controller",
+  "item.pleasesit.modding_chair": "Please Sit Controller",
   "item.pleasesit.modding_chair.target_missing": "Right-click a block to select the controller target",
   "item.pleasesit.modding_chair.target_ready": "Target: %s",
   "item.pleasesit.modding_chair.target_reset_hint": "Sneak-right-click a block to change the target, or a villager to lock it",
