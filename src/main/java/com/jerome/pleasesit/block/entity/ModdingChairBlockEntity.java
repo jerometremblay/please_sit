@@ -2,7 +2,9 @@ package com.jerome.pleasesit.block.entity;
 
 import com.jerome.pleasesit.block.ModdingChairBlock;
 import com.jerome.pleasesit.config.PleaseSitConfig;
+import com.jerome.pleasesit.menu.ControllerMenu;
 import com.jerome.pleasesit.registry.ModBlockEntities;
+import net.neoforged.neoforge.common.extensions.IPlayerExtension;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
@@ -12,12 +14,17 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
@@ -27,7 +34,7 @@ import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import org.jspecify.annotations.Nullable;
 
-public class ModdingChairBlockEntity extends BlockEntity {
+public class ModdingChairBlockEntity extends BlockEntity implements MenuProvider {
     private static final String TARGET_POS_KEY = "target_pos";
     private static final String LOCKED_VILLAGER_UUID_KEY = "locked_villager_uuid";
     private static final double APPROACH_SPEED = 0.6D;
@@ -40,10 +47,16 @@ public class ModdingChairBlockEntity extends BlockEntity {
     private static final Map<ResourceKey<Level>, Map<UUID, BlockPos>> CLAIMED_VILLAGERS = new HashMap<>();
     private static final Map<ResourceKey<Level>, Map<UUID, BlockPos>> LOCKED_VILLAGERS = new HashMap<>();
 
+    private static final String SEARCH_RADIUS_KEY = "searchRadius";
+    private static final int DEFAULT_SEARCH_RADIUS = 16;
+    private static final int MIN_SEARCH_RADIUS = 1;
+    private static final int MAX_SEARCH_RADIUS = 64;
+
     private UUID seatEntityUuid;
     private UUID villagerUuid;
     private UUID lockedVillagerUuid;
     private BlockPos targetPos;
+    private int searchRadius = DEFAULT_SEARCH_RADIUS;
     private double lastVillagerX;
     private double lastVillagerY;
     private double lastVillagerZ;
@@ -87,6 +100,29 @@ public class ModdingChairBlockEntity extends BlockEntity {
         }
 
         setChanged();
+    }
+
+    public int getSearchRadius() {
+        return searchRadius;
+    }
+
+    public void setSearchRadius(int searchRadius) {
+        this.searchRadius = Math.clamp(searchRadius, MIN_SEARCH_RADIUS, MAX_SEARCH_RADIUS);
+        setChanged();
+    }
+
+    public void openMenu(net.neoforged.neoforge.common.extensions.IPlayerExtension player) {
+        player.openMenu(this, worldPosition);
+    }
+
+    @Override
+    public Component getDisplayName() {
+        return Component.translatable("block.pleasesit.modding_chair");
+    }
+
+    @Override
+    public AbstractContainerMenu createMenu(int containerId, Inventory playerInventory, Player player) {
+        return new ControllerMenu(containerId, playerInventory, this);
     }
 
     public void releaseOccupant() {
@@ -160,23 +196,7 @@ public class ModdingChairBlockEntity extends BlockEntity {
         villagerUuid = input.read("villager_uuid", UUIDUtil.CODEC).orElse(null);
         lockedVillagerUuid = input.read(LOCKED_VILLAGER_UUID_KEY, UUIDUtil.CODEC).orElse(null);
         targetPos = input.getLong(TARGET_POS_KEY).map(BlockPos::of).orElse(null);
-    }
-
-    @Override
-    public void onLoad() {
-        super.onLoad();
-        if (level instanceof ServerLevel serverLevel) {
-            refreshPersistentLock(serverLevel);
-        }
-    }
-
-    @Override
-    public void setRemoved() {
-        if (level instanceof ServerLevel serverLevel) {
-            unregisterPersistentLock(serverLevel);
-            releaseVillagerClaim(serverLevel);
-        }
-        super.setRemoved();
+        searchRadius = input.read(SEARCH_RADIUS_KEY, com.mojang.serialization.Codec.INT).map(i -> i).orElse(DEFAULT_SEARCH_RADIUS);
     }
 
     @Override
@@ -194,6 +214,24 @@ public class ModdingChairBlockEntity extends BlockEntity {
         if (targetPos != null) {
             output.putLong(TARGET_POS_KEY, targetPos.asLong());
         }
+        output.store(SEARCH_RADIUS_KEY, com.mojang.serialization.Codec.INT, searchRadius);
+    }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (level instanceof ServerLevel serverLevel) {
+            refreshPersistentLock(serverLevel);
+        }
+    }
+
+    @Override
+    public void setRemoved() {
+        if (level instanceof ServerLevel serverLevel) {
+            unregisterPersistentLock(serverLevel);
+            releaseVillagerClaim(serverLevel);
+        }
+        super.setRemoved();
     }
 
     private Optional<Villager> findNearestVillager(ServerLevel level) {
@@ -405,10 +443,6 @@ public class ModdingChairBlockEntity extends BlockEntity {
 
     private float getSeatYaw() {
         return getBlockState().getValue(ModdingChairBlock.FACING).toYRot();
-    }
-
-    private double getSearchRadius() {
-        return PleaseSitConfig.COMMON.villagerSearchRadius.get();
     }
 
     private BlockPos getApproachPos() {
