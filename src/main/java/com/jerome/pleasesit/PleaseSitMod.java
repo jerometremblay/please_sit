@@ -2,6 +2,7 @@ package com.jerome.pleasesit;
 
 import com.jerome.pleasesit.config.PleaseSitConfig;
 import com.mojang.logging.LogUtils;
+import com.jerome.pleasesit.network.ModNetworking;
 import com.jerome.pleasesit.registry.ModBlockEntities;
 import com.jerome.pleasesit.registry.ModBlocks;
 import net.minecraft.world.item.CreativeModeTabs;
@@ -25,6 +26,7 @@ public final class PleaseSitMod {
         ModBlocks.register(modEventBus);
         ModBlockEntities.register(modEventBus);
         modEventBus.addListener(this::addCreativeTabEntries);
+        modEventBus.addListener(ModNetworking::register);
         modContainer.registerConfig(ModConfig.Type.COMMON, PleaseSitConfig.COMMON_SPEC);
         if (FMLEnvironment.dist.isClient()) {
             modContainer.registerExtensionPoint(IConfigScreenFactory.class, (container, parent) -> new ConfigurationScreen(modContainer, parent));
