@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -29,8 +30,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.storage.ValueInput;
-import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import javax.annotation.Nullable;
 
@@ -190,31 +189,31 @@ public class ModdingChairBlockEntity extends BlockEntity implements MenuProvider
     }
 
     @Override
-    protected void loadAdditional(ValueInput input) {
-        super.loadAdditional(input);
-        seatEntityUuid = input.read("seat_entity_uuid", UUIDUtil.CODEC).orElse(null);
-        villagerUuid = input.read("villager_uuid", UUIDUtil.CODEC).orElse(null);
-        lockedVillagerUuid = input.read(LOCKED_VILLAGER_UUID_KEY, UUIDUtil.CODEC).orElse(null);
-        targetPos = input.getLong(TARGET_POS_KEY).map(BlockPos::of).orElse(null);
-        searchRadius = input.read(SEARCH_RADIUS_KEY, com.mojang.serialization.Codec.INT).map(i -> i).orElse(DEFAULT_SEARCH_RADIUS);
+    public void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
+        super.loadAdditional(tag, registries);
+        seatEntityUuid = tag.read("seat_entity_uuid", UUIDUtil.CODEC).orElse(null);
+        villagerUuid = tag.read("villager_uuid", UUIDUtil.CODEC).orElse(null);
+        lockedVillagerUuid = tag.read(LOCKED_VILLAGER_UUID_KEY, UUIDUtil.CODEC).orElse(null);
+        targetPos = tag.getLong(TARGET_POS_KEY).map(BlockPos::of).orElse(null);
+        searchRadius = tag.getInt(SEARCH_RADIUS_KEY).orElse(DEFAULT_SEARCH_RADIUS);
     }
 
     @Override
-    protected void saveAdditional(ValueOutput output) {
-        super.saveAdditional(output);
+    public void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
+        super.saveAdditional(tag, registries);
         if (seatEntityUuid != null) {
-            output.store("seat_entity_uuid", UUIDUtil.CODEC, seatEntityUuid);
+            tag.store("seat_entity_uuid", UUIDUtil.CODEC, seatEntityUuid);
         }
         if (villagerUuid != null) {
-            output.store("villager_uuid", UUIDUtil.CODEC, villagerUuid);
+            tag.store("villager_uuid", UUIDUtil.CODEC, villagerUuid);
         }
         if (lockedVillagerUuid != null) {
-            output.store(LOCKED_VILLAGER_UUID_KEY, UUIDUtil.CODEC, lockedVillagerUuid);
+            tag.store(LOCKED_VILLAGER_UUID_KEY, UUIDUtil.CODEC, lockedVillagerUuid);
         }
         if (targetPos != null) {
-            output.putLong(TARGET_POS_KEY, targetPos.asLong());
+            tag.putLong(TARGET_POS_KEY, targetPos.asLong());
         }
-        output.store(SEARCH_RADIUS_KEY, com.mojang.serialization.Codec.INT, searchRadius);
+        tag.putInt(SEARCH_RADIUS_KEY, searchRadius);
     }
 
     @Override
